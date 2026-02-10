@@ -1,10 +1,10 @@
-// Archivo generado automaticamente por Compiler.js
+// Generado automaticamente por Compiler.js
 const clientConnector = require('./ClientConnector');
 
 class CalculatorProxy {
 
     static init() {
-        clientConnector.connect('http://localhost:8080');
+        clientConnector.connect();
     }
 
     static async add(x, y) {

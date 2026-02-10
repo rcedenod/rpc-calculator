@@ -1,21 +1,23 @@
+// Generado automaticamente por Compiler.js
 const io = require('socket.io-client');
 
 class ClientConnector {
     constructor() {
         this.socket = null;
+        this.defaultUrl = 'http://localhost:8080';
     }
 
     connect(url) {
-        if (this.socket) return; 
-        
-        console.log(`Conectando a ${url}...`);
-        this.socket = io(url);
+        if (this.socket) return;
+
+        const finalUrl = url || this.defaultUrl;
+        console.log(`Conectando a ${finalUrl}...`);
+        this.socket = io(finalUrl);
 
         this.socket.on('connect', () => console.log('Conectado al dispatcher'));
         this.socket.on('disconnect', () => console.log('Desconectado'));
         this.socket.on('connect_error', (err) => console.error('Error conexion:', err.message));
     }
-
 
     serialize(data) {
         return JSON.stringify(data);
@@ -36,7 +38,7 @@ class ClientConnector {
             this.socket.emit('rpc_call', payloadString, (responseString) => {
                 try {
                     const response = this.deserialize(responseString);
-                    
+
                     if (response.status === 'ok') {
                         resolve(response.data);
                     } else {
