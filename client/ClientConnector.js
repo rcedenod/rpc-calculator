@@ -1,5 +1,5 @@
 // Generado automaticamente por Compiler.js
-const io = require('socket.io-client');
+import { io } from 'socket.io-client';
 
 class ClientConnector {
     constructor() {
@@ -52,4 +52,5 @@ class ClientConnector {
     }
 }
 
-module.exports = new ClientConnector();
+const clientConnector = new ClientConnector();
+export default clientConnector;

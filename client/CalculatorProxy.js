@@ -1,5 +1,5 @@
 // Generado automaticamente por Compiler.js
-const clientConnector = require('./ClientConnector');
+import clientConnector from './ClientConnector.js';
 
 class CalculatorProxy {
 
@@ -38,4 +38,4 @@ class CalculatorProxy {
 }
 
 CalculatorProxy.init();
-module.exports = CalculatorProxy;
+export default CalculatorProxy;
