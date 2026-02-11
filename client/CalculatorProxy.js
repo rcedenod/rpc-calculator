@@ -38,4 +38,5 @@ class CalculatorProxy {
 }
 
 CalculatorProxy.init();
+
 export default CalculatorProxy;

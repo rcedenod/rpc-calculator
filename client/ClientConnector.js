@@ -40,7 +40,7 @@ class ClientConnector {
                     const response = this.deserialize(responseString);
 
                     if (response.status === 'ok') {
-                        resolve(response.data);
+                        resolve(response.data ?? response.response);
                     } else {
                         reject(new Error(response.msg));
                     }
@@ -53,4 +53,5 @@ class ClientConnector {
 }
 
 const clientConnector = new ClientConnector();
+
 export default clientConnector;

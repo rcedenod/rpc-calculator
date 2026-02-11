@@ -6,9 +6,9 @@ class Compiler {
         this.filePath = filePath;
         this.configPath = configPath;
         this.config = {
-            port: 8080,
-            host: 'localhost',
-            protocol: 'http',
+            port: 3000,
+            host: '',
+            protocol: '',
             className: '',
             methods: [],
             params: {}
@@ -60,7 +60,7 @@ class Compiler {
 
             lines.forEach(line => {
                 const trimmedLine = line.trim();
-                if (!trimmedLine || trimmedLine.startsWith('//')) return;
+                if (!trimmedLine) return;
 
                 // 1. LEER PUERTO (opcional para compatibilidad)
                 if (trimmedLine.startsWith('@port:')) {
@@ -122,10 +122,8 @@ class Compiler {
         const className = this.config.className;
         const proxyName = `${className}Proxy`;
         
-        const fullUrl = `${this.config.protocol}://${this.config.host}:${this.config.port}`;
-        
         let content = `// Generado automaticamente por Compiler.js\n`;
-        content += `const clientConnector = require('./ClientConnector');\n\n`;
+        content += `import clientConnector from './ClientConnector.js';\n\n`;
         content += `class ${proxyName} {\n\n`;
 
         content += `    static init() {\n`;
@@ -145,7 +143,7 @@ class Compiler {
 
         content += `}\n\n`;
         content += `${proxyName}.init();\n`;
-        content += `module.exports = ${proxyName};`;
+        content += `export default ${proxyName};\n`;
 
         fs.writeFileSync(`../client/${proxyName}.js`, content);
         console.log(`Stubs de cliente generados: ${proxyName}.js`);
@@ -155,7 +153,7 @@ class Compiler {
         const fullUrl = `${this.config.protocol}://${this.config.host}:${this.config.port}`;
 
         let content = `// Generado automaticamente por Compiler.js\n`;
-        content += `const io = require('socket.io-client');\n\n`;
+        content += `import { io } from 'socket.io-client';\n\n`;
         content += `class ClientConnector {\n`;
         content += `    constructor() {\n`;
         content += `        this.socket = null;\n`;
@@ -186,7 +184,7 @@ class Compiler {
         content += `                try {\n`;
         content += `                    const response = this.deserialize(responseString);\n\n`;
         content += `                    if (response.status === 'ok') {\n`;
-        content += `                        resolve(response.data);\n`;
+        content += `                        resolve(response.data ?? response.response);\n`;
         content += `                    } else {\n`;
         content += `                        reject(new Error(response.msg));\n`;
         content += `                    }\n`;
@@ -197,7 +195,8 @@ class Compiler {
         content += `        });\n`;
         content += `    }\n`;
         content += `}\n\n`;
-        content += `module.exports = new ClientConnector();\n`;
+        content += `const clientConnector = new ClientConnector();\n`;
+        content += `export default clientConnector;\n`;
 
         fs.writeFileSync(`../client/ClientConnector.js`, content);
         console.log(`Stubs de cliente generados: ClientConnector.js`);
