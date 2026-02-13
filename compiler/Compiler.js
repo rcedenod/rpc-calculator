@@ -1,12 +1,9 @@
 const fs = require('fs');
-const path = require('path');
 
 class Compiler {
-    constructor(filePath, configPath = path.join(__dirname, 'config.json')) {
+    constructor(filePath) {
         this.filePath = filePath;
-        this.configPath = configPath;
         this.config = {
-            host: 'localhost',
             port: 8080,
             className: '',
             methods: [],
@@ -14,42 +11,8 @@ class Compiler {
         };
     }
 
-    loadConfig() {
-        if (!fs.existsSync(this.configPath)) {
-            console.warn("Config no encontrada, usando valores por defecto.");
-            return;
-        }
-
-        let raw = '';
-        try {
-            raw = fs.readFileSync(this.configPath, 'utf-8');
-        } catch (error) {
-            throw new Error(`No se pudo leer config: ${error.message}`);
-        }
-
-        let json = {};
-        try {
-            json = JSON.parse(raw);
-        } catch (error) {
-            throw new Error(`Config JSON invalida: ${error.message}`);
-        }
-
-        if (json.host || json.url) {
-            this.config.host = String(json.host || json.url).trim();
-        }
-
-        if (json.port !== undefined && json.port !== null) {
-            const parsed = parseInt(json.port, 10);
-            if (Number.isNaN(parsed)) {
-                throw new Error("Port invalido en config");
-            }
-            this.config.port = parsed;
-        }
-    }
-
     parse() {
         try {
-            this.loadConfig();
             const content = fs.readFileSync(this.filePath, 'utf-8');
             const lines = content.split('\n');
 
@@ -83,7 +46,6 @@ class Compiler {
             });
 
             console.log(`Clase: ${this.config.className} `);
-            console.log(`Host: ${this.config.host}`);
             console.log(`Puerto: ${this.config.port}\n`);
             
             this.generateServerStub();
@@ -147,7 +109,6 @@ class Compiler {
     }
 
     generateClientConnector() {
-        const host = this.config.host;
         const port = this.config.port;
 
         let content = `// Generado automaticamente por Compiler.js\n`;
@@ -155,7 +116,6 @@ class Compiler {
         content += `class ClientConnector {\n`;
         content += `    constructor() {\n`;
         content += `        this.socket = null;\n`;
-        content += `        this.host = '${host}';\n`;
         content += `        this.port = ${port};\n`;
         content += `        this.buffer = '';\n`;
         content += `        this.connected = false;\n`;
@@ -171,9 +131,9 @@ class Compiler {
         content += `        if (this.connecting) {\n`;
         content += `            return this.connecting;\n`;
         content += `        }\n\n`;
-        content += `        console.log(\`Socket conectando a \${this.host}:\${this.port}...\`);\n\n`;
+        content += `        console.log(\`Socket conectando al puerto \${this.port}...\`);\n\n`;
         content += `        this.connecting = new Promise((resolve, reject) => {\n`;
-        content += `            const socket = net.createConnection({ host: this.host, port: this.port });\n`;
+        content += `            const socket = net.createConnection({ port: this.port });\n`;
         content += `            this.socket = socket;\n`;
         content += `            socket.setEncoding('utf8');\n`;
         content += `            const onError = (error) => {\n`;

@@ -11,7 +11,6 @@ Calculadora RPC cliente-servidor en Node.js usando sockets TCP puros con `node:n
 
 ## Estructura
 - `compiler/calculator.txt`: definición del servicio.
-- `compiler/config.json`: host/puerto del servidor para generar el conector del cliente.
 - `server/Calculator.js`: implementación de operaciones.
 - `server/Dispatcher.js`: servidor TCP RPC.
 - `client/ClientConnector.js`: conector TCP (generado).
@@ -22,6 +21,7 @@ Calculadora RPC cliente-servidor en Node.js usando sockets TCP puros con `node:n
 Ejemplo en `compiler/calculator.txt`:
 
 ```txt
+@port: 8080
 @class: Calculator
 @method: add(params)
 @method: subtract(params)
@@ -29,18 +29,6 @@ Ejemplo en `compiler/calculator.txt`:
 @method: divide(params)
 @params = [x, y]
 ```
-
-## Configuración del compilador
-Cree `compiler/config.json` con:
-
-```json
-{
-  "host": "localhost",
-  "port": 8080
-}
-```
-
-Si no existe este archivo, el compilador usa `localhost:8080`.
 
 ## Generar stubs
 Desde `compiler/`:

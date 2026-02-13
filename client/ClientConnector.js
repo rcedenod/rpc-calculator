@@ -4,7 +4,6 @@ import net from 'node:net';
 class ClientConnector {
     constructor() {
         this.socket = null;
-        this.host = 'localhost';
         this.port = 8080;
         this.buffer = '';
         this.connected = false;
@@ -22,10 +21,10 @@ class ClientConnector {
             return this.connecting;
         }
 
-        console.log(`Socket conectando a ${this.host}:${this.port}...`);
+        console.log(`Socket conectando al puerto ${this.port}...`);
 
         this.connecting = new Promise((resolve, reject) => {
-            const socket = net.createConnection({ host: this.host, port: this.port });
+            const socket = net.createConnection({ port: this.port });
             this.socket = socket;
             socket.setEncoding('utf8');
             const onError = (error) => {
@@ -50,6 +49,55 @@ class ClientConnector {
         });
 
         return this.connecting;
+    }
+
+        disconnect() {
+        if (!this.socket) {
+            return;
+        }
+        this.socket.end();
+        this.socket.destroy();
+        this.socket = null;
+        this.connected = false;
+        this.connecting = null;
+        this.buffer = '';
+    }
+
+    serialize(data) {
+        return JSON.stringify(data);
+    }
+
+    deserialize(data) {
+        return JSON.parse(data);
+    }
+
+    async send(request) {
+        if (this.connecting) {
+            await this.connecting;
+        }
+
+        return new Promise((resolve, reject) => {
+            if (!this.socket || !this.connected) {
+                reject(new Error('ClientConnector no conectado.'));
+                return;
+            }
+
+            const requestId = this.nextRequestId++;
+            this.pending.set(requestId, { resolve, reject });
+
+            const payloadString = this.serialize({
+                ...request,
+                requestId
+            }) + '\n';
+
+            this.socket.write(payloadString, (error) => {
+                if (!error) {
+                    return;
+                }
+                this.pending.delete(requestId);
+                reject(new Error('No se pudo enviar request: ' + error.message));
+            });
+        });
     }
 
     handleData(chunk) {
@@ -111,55 +159,6 @@ class ClientConnector {
             pending.reject(error);
         }
         this.pending.clear();
-    }
-
-    disconnect() {
-        if (!this.socket) {
-            return;
-        }
-        this.socket.end();
-        this.socket.destroy();
-        this.socket = null;
-        this.connected = false;
-        this.connecting = null;
-        this.buffer = '';
-    }
-
-    serialize(data) {
-        return JSON.stringify(data);
-    }
-
-    deserialize(data) {
-        return JSON.parse(data);
-    }
-
-    async send(request) {
-        if (this.connecting) {
-            await this.connecting;
-        }
-
-        return new Promise((resolve, reject) => {
-            if (!this.socket || !this.connected) {
-                reject(new Error('ClientConnector no conectado.'));
-                return;
-            }
-
-            const requestId = this.nextRequestId++;
-            this.pending.set(requestId, { resolve, reject });
-
-            const payloadString = this.serialize({
-                ...request,
-                requestId
-            }) + '\n';
-
-            this.socket.write(payloadString, (error) => {
-                if (!error) {
-                    return;
-                }
-                this.pending.delete(requestId);
-                reject(new Error('No se pudo enviar request: ' + error.message));
-            });
-        });
     }
 }
 
