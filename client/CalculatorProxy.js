@@ -1,42 +1,42 @@
 // Generado automaticamente por Compiler.js
-import clientConnector from './ClientConnector.js';
+import ClientConnector from './ClientConnector.js';
 
 class CalculatorProxy {
-
-    static init() {
-        clientConnector.connect();
+    constructor() {
+        this.connector = new ClientConnector();
     }
 
-    static async add(x, y) {
-        return await clientConnector.send({
+    async add(x, y) {
+        return await this.connector.send({
             class: 'Calculator',
             method: 'add',
             params: [x, y]
         });
     }
-    static async subtract(x, y) {
-        return await clientConnector.send({
+    async subtract(x, y) {
+        return await this.connector.send({
             class: 'Calculator',
             method: 'subtract',
             params: [x, y]
         });
     }
-    static async multiply(x, y) {
-        return await clientConnector.send({
+    async multiply(x, y) {
+        return await this.connector.send({
             class: 'Calculator',
             method: 'multiply',
             params: [x, y]
         });
     }
-    static async divide(x, y) {
-        return await clientConnector.send({
+    async divide(x, y) {
+        return await this.connector.send({
             class: 'Calculator',
             method: 'divide',
             params: [x, y]
         });
     }
+
+    disconnect() {
+        this.connector.disconnect();
+    }
 }
-
-CalculatorProxy.init();
-
 export default CalculatorProxy;

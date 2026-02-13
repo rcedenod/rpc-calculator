@@ -6,9 +6,8 @@ class Compiler {
         this.filePath = filePath;
         this.configPath = configPath;
         this.config = {
-            port: 3000,
-            host: '',
-            protocol: '',
+            host: 'localhost',
+            port: 8080,
             className: '',
             methods: [],
             params: {}
@@ -37,10 +36,6 @@ class Compiler {
 
         if (json.host || json.url) {
             this.config.host = String(json.host || json.url).trim();
-        }
-
-        if (json.protocol) {
-            this.config.protocol = String(json.protocol).trim();
         }
 
         if (json.port !== undefined && json.port !== null) {
@@ -123,17 +118,16 @@ class Compiler {
         const proxyName = `${className}Proxy`;
         
         let content = `// Generado automaticamente por Compiler.js\n`;
-        content += `import clientConnector from './ClientConnector.js';\n\n`;
-        content += `class ${proxyName} {\n\n`;
-
-        content += `    static init() {\n`;
-        content += `        clientConnector.connect();\n`;
+        content += `import ClientConnector from './ClientConnector.js';\n\n`;
+        content += `class ${proxyName} {\n`;
+        content += `    constructor() {\n`;
+        content += `        this.connector = new ClientConnector();\n`;
         content += `    }\n\n`;
 
         this.config.methods.forEach(method => {
             const paramsList = this.config.params[method.struct].join(', ');
-            content += `    static async ${method.name}(${paramsList}) {\n`;
-            content += `        return await clientConnector.send({\n`;
+            content += `    async ${method.name}(${paramsList}) {\n`;
+            content += `        return await this.connector.send({\n`;
             content += `            class: '${className}',\n`;
             content += `            method: '${method.name}',\n`;
             content += `            params: [${paramsList}]\n`;
@@ -141,8 +135,11 @@ class Compiler {
             content += `    }\n`;
         });
 
-        content += `}\n\n`;
-        content += `${proxyName}.init();\n`;
+        content += `\n`;
+        content += `    disconnect() {\n`;
+        content += `        this.connector.disconnect();\n`;
+        content += `    }\n`;
+        content += `}\n`;
         content += `export default ${proxyName};\n`;
 
         fs.writeFileSync(`../client/${proxyName}.js`, content);
@@ -150,23 +147,119 @@ class Compiler {
     }
 
     generateClientConnector() {
-        const fullUrl = `${this.config.protocol}://${this.config.host}:${this.config.port}`;
+        const host = this.config.host;
+        const port = this.config.port;
 
         let content = `// Generado automaticamente por Compiler.js\n`;
-        content += `import { io } from 'socket.io-client';\n\n`;
+        content += `import net from 'node:net';\n\n`;
         content += `class ClientConnector {\n`;
         content += `    constructor() {\n`;
         content += `        this.socket = null;\n`;
-        content += `        this.defaultUrl = '${fullUrl}';\n`;
+        content += `        this.host = '${host}';\n`;
+        content += `        this.port = ${port};\n`;
+        content += `        this.buffer = '';\n`;
+        content += `        this.connected = false;\n`;
+        content += `        this.connecting = null;\n`;
+        content += `        this.pending = new Map();\n`;
+        content += `        this.nextRequestId = 1;\n`;
+        content += `        this.connect();\n`;
         content += `    }\n\n`;
-        content += `    connect(url) {\n`;
-        content += `        if (this.socket) return;\n\n`;
-        content += `        const finalUrl = url || this.defaultUrl;\n`;
-        content += `        console.log(\`Conectando a \${finalUrl}...\`);\n`;
-        content += `        this.socket = io(finalUrl);\n\n`;
-        content += `        this.socket.on('connect', () => console.log('Conectado al dispatcher'));\n`;
-        content += `        this.socket.on('disconnect', () => console.log('Desconectado'));\n`;
-        content += `        this.socket.on('connect_error', (err) => console.error('Error conexion:', err.message));\n`;
+        content += `    connect() {\n`;
+        content += `        if (this.connected) {\n`;
+        content += `            return Promise.resolve();\n`;
+        content += `        }\n`;
+        content += `        if (this.connecting) {\n`;
+        content += `            return this.connecting;\n`;
+        content += `        }\n\n`;
+        content += `        console.log(\`Socket conectando a \${this.host}:\${this.port}...\`);\n\n`;
+        content += `        this.connecting = new Promise((resolve, reject) => {\n`;
+        content += `            const socket = net.createConnection({ host: this.host, port: this.port });\n`;
+        content += `            this.socket = socket;\n`;
+        content += `            socket.setEncoding('utf8');\n`;
+        content += `            const onError = (error) => {\n`;
+        content += `                this.connecting = null;\n`;
+        content += `                this.socket = null;\n`;
+        content += `                this.connected = false;\n`;
+        content += `                reject(error);\n`;
+        content += `            };\n\n`;
+        content += `            socket.once('error', onError);\n`;
+        content += `            socket.once('connect', () => {\n`;
+        content += `                socket.removeListener('error', onError);\n`;
+        content += `                this.connected = true;\n`;
+        content += `                this.connecting = null;\n`;
+        content += `                console.log('Conectado al dispatcher');\n`;
+        content += `                resolve();\n`;
+        content += `            });\n\n`;
+        content += `            socket.on('data', (chunk) => this.handleData(chunk));\n`;
+        content += `            socket.on('close', () => this.handleClose());\n`;
+        content += `            socket.on('error', (error) => this.handleSocketError(error));\n`;
+        content += `        });\n\n`;
+        content += `        return this.connecting;\n`;
+        content += `    }\n\n`;
+        content += `    handleData(chunk) {\n`;
+        content += `        this.buffer += chunk;\n`;
+        content += `        let newlineIndex = this.buffer.indexOf('\\n');\n`;
+        content += `\n`;
+        content += `        while (newlineIndex !== -1) {\n`;
+        content += `            const line = this.buffer.slice(0, newlineIndex).trim();\n`;
+        content += `            this.buffer = this.buffer.slice(newlineIndex + 1);\n`;
+        content += `\n`;
+        content += `            if (line) {\n`;
+        content += `                this.handleResponse(line);\n`;
+        content += `            }\n`;
+        content += `            newlineIndex = this.buffer.indexOf('\\n');\n`;
+        content += `        }\n`;
+        content += `    }\n\n`;
+        content += `    handleResponse(line) {\n`;
+        content += `        let response;\n`;
+        content += `        try {\n`;
+        content += `            response = this.deserialize(line);\n`;
+        content += `        } catch (error) {\n`;
+        content += `            console.error('Respuesta invalida del servidor:', error.message);\n`;
+        content += `            return;\n`;
+        content += `        }\n\n`;
+        content += `        const requestId = response.requestId;\n`;
+        content += `        const pending = this.pending.get(requestId);\n`;
+        content += `        if (!pending) {\n`;
+        content += `            return;\n`;
+        content += `        }\n\n`;
+        content += `        this.pending.delete(requestId);\n`;
+        content += `        if (response.status === 'ok') {\n`;
+        content += `            pending.resolve(response.data ?? response.response);\n`;
+        content += `            return;\n`;
+        content += `        }\n`;
+        content += `        pending.reject(new Error(response.msg || 'Error RPC'));\n`;
+        content += `    }\n\n`;
+        content += `    handleClose() {\n`;
+        content += `        this.connected = false;\n`;
+        content += `        this.connecting = null;\n`;
+        content += `        this.socket = null;\n`;
+        content += `        this.buffer = '';\n`;
+        content += `        this.rejectAllPending(new Error('Conexion cerrada por el servidor'));\n`;
+        content += `        console.log('Desconectado del dispatcher');\n`;
+        content += `    }\n\n`;
+        content += `    handleSocketError(error) {\n`;
+        content += `        if (!this.connected) {\n`;
+        content += `            return;\n`;
+        content += `        }\n`;
+        content += `        this.rejectAllPending(new Error('Error de socket: ' + error.message));\n`;
+        content += `    }\n\n`;
+        content += `    rejectAllPending(error) {\n`;
+        content += `        for (const [, pending] of this.pending) {\n`;
+        content += `            pending.reject(error);\n`;
+        content += `        }\n`;
+        content += `        this.pending.clear();\n`;
+        content += `    }\n\n`;
+        content += `    disconnect() {\n`;
+        content += `        if (!this.socket) {\n`;
+        content += `            return;\n`;
+        content += `        }\n`;
+        content += `        this.socket.end();\n`;
+        content += `        this.socket.destroy();\n`;
+        content += `        this.socket = null;\n`;
+        content += `        this.connected = false;\n`;
+        content += `        this.connecting = null;\n`;
+        content += `        this.buffer = '';\n`;
         content += `    }\n\n`;
         content += `    serialize(data) {\n`;
         content += `        return JSON.stringify(data);\n`;
@@ -174,29 +267,32 @@ class Compiler {
         content += `    deserialize(data) {\n`;
         content += `        return JSON.parse(data);\n`;
         content += `    }\n\n`;
-        content += `    send(request) {\n`;
+        content += `    async send(request) {\n`;
+        content += `        if (this.connecting) {\n`;
+        content += `            await this.connecting;\n`;
+        content += `        }\n\n`;
         content += `        return new Promise((resolve, reject) => {\n`;
-        content += `            if (!this.socket) {\n`;
-        content += `                return reject(new Error("ClientConnector no inicializado."));\n`;
+            content += `            if (!this.socket || !this.connected) {\n`;
+                content += `                reject(new Error('ClientConnector no conectado.'));\n`;
+        content += `                return;\n`;
         content += `            }\n\n`;
-        content += `            const payloadString = this.serialize(request);\n\n`;
-        content += `            this.socket.emit('rpc_call', payloadString, (responseString) => {\n`;
-        content += `                try {\n`;
-        content += `                    const response = this.deserialize(responseString);\n\n`;
-        content += `                    if (response.status === 'ok') {\n`;
-        content += `                        resolve(response.data ?? response.response);\n`;
-        content += `                    } else {\n`;
-        content += `                        reject(new Error(response.msg));\n`;
-        content += `                    }\n`;
-        content += `                } catch (e) {\n`;
-        content += `                    reject(new Error("Error de deserializacion en el cliente: " + e.message));\n`;
+        content += `            const requestId = this.nextRequestId++;\n`;
+        content += `            this.pending.set(requestId, { resolve, reject });\n\n`;
+        content += `            const payloadString = this.serialize({\n`;
+        content += `                ...request,\n`;
+        content += `                requestId\n`;
+        content += `            }) + '\\n';\n\n`;
+        content += `            this.socket.write(payloadString, (error) => {\n`;
+        content += `                if (!error) {\n`;
+        content += `                    return;\n`;
         content += `                }\n`;
+        content += `                this.pending.delete(requestId);\n`;
+        content += `                reject(new Error('No se pudo enviar request: ' + error.message));\n`;
         content += `            });\n`;
         content += `        });\n`;
         content += `    }\n`;
         content += `}\n\n`;
-        content += `const clientConnector = new ClientConnector();\n`;
-        content += `export default clientConnector;\n`;
+        content += `export default ClientConnector;\n`;
 
         fs.writeFileSync(`../client/ClientConnector.js`, content);
         console.log(`Stubs de cliente generados: ClientConnector.js`);

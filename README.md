@@ -1,34 +1,27 @@
 # rpc-calculator
 
-RPC simple cliente-servidor en Node.js con `socket.io`. Un compilador lee una especificacion (`compiler/calculator.txt`) y genera stubs para el servidor y el cliente. El `Dispatcher` recibe solicitudes RPC, invoca metodos por reflexion y devuelve la respuesta.
+Calculadora RPC cliente-servidor en Node.js usando sockets TCP puros con `node:net`.
 
 ## Resumen
-- **Compiler**: procesa la definicion de servicio y genera stubs (`server/<Clase>.js`, `client/ClientConnector.js`, `client/<Clase>Proxy.js`).
-- **Dispatcher**: servidor RPC que recibe llamadas, carga la clase solicitada y ejecuta el metodo con sus parametros.
-- **Cliente**: usa un proxy estatico para enviar RPC y recibir resultados.
+- `compiler/Compiler.js`: genera stubs para servidor y cliente a partir de `compiler/calculator.txt`.
+- `server/Dispatcher.js`: servidor RPC TCP que recibe JSON, ejecuta métodos por reflexión y responde.
+- `client/ClientConnector.js`: gestiona conexión TCP, serialización y correlación de requests por `requestId`.
+- `client/CalculatorProxy.js`: proxy orientado a instancia (`new CalculatorProxy()`).
+- `client/cli.js`: interfaz de línea de comandos para operar la calculadora.
 
-## Estructura del repositorio
-- `compiler/Compiler.js`: parser + generador de stubs.
-- `compiler/calculator.txt`: definicion del servicio (clase, metodos, parametros).
-- `compiler/config.json`: host, puerto y protocolo usados al generar el conector del cliente.
-- `server/Dispatcher.js`: servidor `socket.io` que recibe `rpc_call` y ejecuta por reflexion.
-- `server/Calculator.js`: implementacion del servicio (generado y luego editado).
-- `client/ClientConnector.js`: conector del cliente (generado).
-- `client/CalculatorProxy.js`: proxy RPC del cliente (generado).
-- `server/package.json`: dependencias del servidor.
+## Estructura
+- `compiler/calculator.txt`: definición del servicio.
+- `compiler/config.json`: host/puerto del servidor para generar el conector del cliente.
+- `server/Calculator.js`: implementación de operaciones.
+- `server/Dispatcher.js`: servidor TCP RPC.
+- `client/ClientConnector.js`: conector TCP (generado).
+- `client/CalculatorProxy.js`: proxy RPC (generado).
+- `client/cli.js`: cliente interactivo por terminal.
 
-## Flujo RPC
-1. El cliente llama a un metodo en el proxy, por ejemplo `CalculatorProxy.add(1, 2)`.
-2. El proxy envia un payload:
-   - `class`: nombre de la clase (ej. `Calculator`).
-   - `method`: nombre del metodo (ej. `add`).
-   - `params`: arreglo con parametros.
-3. El `Dispatcher` recibe `rpc_call`, carga la clase desde `server/<Clase>.js`, instancia y ejecuta `instance[method](...params)`.
-4. El `Dispatcher` responde con `{ status: 'ok', response: <resultado> }` o `{ status: 'error', msg: <detalle> }`.
+## Definición del servicio
+Ejemplo en `compiler/calculator.txt`:
 
-## Definicion del servicio
-Ejemplo de `compiler/calculator.txt`:
-```
+```txt
 @class: Calculator
 @method: add(params)
 @method: subtract(params)
@@ -37,48 +30,54 @@ Ejemplo de `compiler/calculator.txt`:
 @params = [x, y]
 ```
 
-## Configuracion
-`compiler/config.json` define la URL del servidor usada para generar el cliente:
-```
+## Configuración del compilador
+Cree `compiler/config.json` con:
+
+```json
 {
   "host": "localhost",
-  "port": 8080,
-  "protocol": "http"
+  "port": 8080
 }
 ```
 
+Si no existe este archivo, el compilador usa `localhost:8080`.
+
 ## Generar stubs
 Desde `compiler/`:
-```
+
+```bash
 node Compiler.js
 ```
-Esto genera/actualiza:
+
+Se actualizan:
 - `server/Calculator.js`
 - `client/ClientConnector.js`
 - `client/CalculatorProxy.js`
 
-## Ejecutar el servidor
+## Ejecutar servidor
 Desde `server/`:
-```
-npm install
-node Dispatcher.js
+
+```bash
+npm start
 ```
 
-> Nota: `Dispatcher.js` actualmente escucha en el puerto `8080` de forma fija. Si cambias el puerto en `compiler/config.json`, debes actualizar `server/Dispatcher.js` para que coincida.
+## Ejecutar cliente CLI
+Desde `client/`:
 
-## Uso del cliente (ejemplo)
+```bash
+npm start
+```
+
+## Uso programático del proxy
+
 ```js
 import CalculatorProxy from './CalculatorProxy.js';
 
-async function main() {
-  const result = await CalculatorProxy.add(3, 4);
-  console.log(result); // 7
-}
-
-main();
+const cli = new CalculatorProxy();
+const result = await cli.add(3, 4);
+console.log(result); // 7
 ```
 
-## Notas importantes
-- Los archivos en `client/` y `server/` marcados como “Generado automaticamente” pueden ser sobrescritos al re-ejecutar el compilador.
-- El `Dispatcher` usa reflexion: valida que exista la clase y el metodo, y luego ejecuta.
-- El formato de respuesta del servidor usa la propiedad `response`. Asegurate de que el cliente la lea correctamente.
+## Protocolo de mensajes
+- Request: una línea JSON con `requestId`, `class`, `method`, `params`.
+- Response: una línea JSON con `requestId`, `status` (`ok|error`) y `response` o `msg`.

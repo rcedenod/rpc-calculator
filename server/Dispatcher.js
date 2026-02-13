@@ -1,16 +1,15 @@
-const { Server } = require('socket.io');
+const net = require('node:net');
 const fs = require('fs');
 const path = require('path');
 
 class Dispatcher {
     constructor(port) {
         this.port = port;
-        
-        this.io = new Server(this.port, {
-            cors: { origin: "*" }
-        });
+        this.server = net.createServer((socket) => this.handleConnection(socket));
 
-        console.log(`Servidor escuchando en el puerto ${this.port}`);
+        this.server.listen(this.port, () => {
+            console.log(`Servidor escuchando en el puerto ${this.port}`);
+        });
 
         this.setupDispatcher();
     }
@@ -24,27 +23,63 @@ class Dispatcher {
     }
 
     setupDispatcher() {
-        this.io.on('connection', (socket) => {
-            console.log(`Cliente conectado: ${socket.id}`);
-
-            socket.on('rpc_call', async (messageJson, callback) => {
-                try {
-                    const payload = this.deserialize(messageJson);
-                    console.log(`Ejecutando: ${payload.method}`);
-
-                    const result = await this.executeMethod(payload);
-                    
-                    callback(this.serialize({ status: 'ok', response: result }));
-                } catch (error) {
-                    console.error("Error:", error.message);
-                    callback(this.serialize({ status: 'error', msg: error.message }));
-                }
-            });
+        this.server.on('error', (error) => {
+            console.error('Error en servidor TCP:', error.message);
         });
     }
 
+    handleConnection(socket) {
+        const clientId = `${socket.remoteAddress}:${socket.remotePort}`;
+        console.log(`Cliente conectado: ${clientId}`);
+        socket.setEncoding('utf8');
+
+        let buffer = '';
+        socket.on('data', (chunk) => {
+            buffer += chunk;
+            let newlineIndex = buffer.indexOf('\n');
+
+            while (newlineIndex !== -1) {
+                const line = buffer.slice(0, newlineIndex).trim();
+                buffer = buffer.slice(newlineIndex + 1);
+
+                if (line) {
+                    this.handleRpc(socket, line);
+                }
+                newlineIndex = buffer.indexOf('\n');
+            }
+        });
+
+        socket.on('close', () => {
+            console.log(`Cliente desconectado: ${clientId}`);
+        });
+
+        socket.on('error', (error) => {
+            console.error(`Error en cliente ${clientId}:`, error.message);
+        });
+    }
+
+    async handleRpc(socket, messageJson) {
+        let requestId = null;
+        try {
+            const payload = this.deserialize(messageJson);
+            requestId = payload.requestId ?? null;
+            console.log(`Ejecutando: ${payload.method} con parametros: ${payload.params[0]} y ${payload.params[1]}\n`);
+
+            const result = await this.executeMethod(payload);
+            this.sendResponse(socket, { requestId, status: 'ok', response: result });
+        } catch (error) {
+            console.error("Error:", error.message);
+            this.sendResponse(socket, { requestId, status: 'error', msg: error.message });
+        }
+    }
+
+    sendResponse(socket, data) {
+        const response = `${this.serialize(data)}\n`;
+        socket.write(response);
+    }
+
     async executeMethod(payload) {
-        const { method, params } = payload;
+        const { method, params = [] } = payload;
         const className = payload.class;
         const classPath = path.join(__dirname, `${className}.js`);
 
@@ -61,4 +96,5 @@ class Dispatcher {
     }
 }
 
-new Dispatcher(8080);
+const port = Number.parseInt(process.env.PORT || '8080', 10);
+new Dispatcher(port);
