@@ -54,20 +54,20 @@ async function executeOperation(operation, a, b) {
 
 async function main() {
     try {
-        console.log('RPC Calculator CLI');
+        console.log('\nRPC Calculator CLI');
 
         while (true) {
             const operation = await askOperation();
             if (operation === null) {
-                console.log('Saliendo...');
+                console.log('\nSaliendo...');
                 break;
             }
             if (!operation) {
-                console.log('Opcion invalida.');
+                console.log('Opcion invalida.\n');
                 continue;
             }
 
-            const a = await askNumber('Ingrese el primer numero');
+            const a = await askNumber('\nIngrese el primer numero');
             const b = await askNumber('Ingrese el segundo numero');
 
             try {

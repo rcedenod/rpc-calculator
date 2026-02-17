@@ -5,11 +5,8 @@ class ClientConnector {
     constructor() {
         this.socket = null;
         this.port = 8080;
-        this.buffer = '';
         this.connected = false;
         this.connecting = null;
-        this.pending = new Map();
-        this.nextRequestId = 1;
         this.connect();
     }
 
@@ -26,7 +23,7 @@ class ClientConnector {
         this.connecting = new Promise((resolve, reject) => {
             const socket = net.createConnection({ port: this.port });
             this.socket = socket;
-            socket.setEncoding('utf8');
+
             const onError = (error) => {
                 this.connecting = null;
                 this.socket = null;
@@ -35,23 +32,24 @@ class ClientConnector {
             };
 
             socket.once('error', onError);
+
             socket.once('connect', () => {
                 socket.removeListener('error', onError);
                 this.connected = true;
                 this.connecting = null;
-                console.log('Conectado al dispatcher');
+                // console.log('Conectado al dispatcher');
                 resolve();
             });
 
-            socket.on('data', (chunk) => this.handleData(chunk));
             socket.on('close', () => this.handleClose());
+
             socket.on('error', (error) => this.handleSocketError(error));
         });
 
         return this.connecting;
     }
 
-        disconnect() {
+    disconnect() {
         if (!this.socket) {
             return;
         }
@@ -60,7 +58,6 @@ class ClientConnector {
         this.socket = null;
         this.connected = false;
         this.connecting = null;
-        this.buffer = '';
     }
 
     serialize(data) {
@@ -76,74 +73,33 @@ class ClientConnector {
             await this.connecting;
         }
 
-        return new Promise((resolve, reject) => {
-            if (!this.socket || !this.connected) {
-                reject(new Error('ClientConnector no conectado.'));
-                return;
-            }
+        if (!this.socket || !this.connected) {
+            throw new Error('ClientConnector no conectado.');
+        }
 
-            const requestId = this.nextRequestId++;
-            this.pending.set(requestId, { resolve, reject });
+        const payloadString = this.serialize(request) + '\n';
 
-            const payloadString = this.serialize({
-                ...request,
-                requestId
-            }) + '\n';
-
+        await new Promise((resolve, reject) => {
             this.socket.write(payloadString, (error) => {
-                if (!error) {
+                if (error) {
+                    reject(new Error('No se pudo enviar request: ' + error.message));
                     return;
                 }
-                this.pending.delete(requestId);
-                reject(new Error('No se pudo enviar request: ' + error.message));
+                resolve();
             });
         });
-    }
 
-    handleData(chunk) {
-        this.buffer += chunk;
-        let newlineIndex = this.buffer.indexOf('\n');
-
-        while (newlineIndex !== -1) {
-            const line = this.buffer.slice(0, newlineIndex).trim();
-            this.buffer = this.buffer.slice(newlineIndex + 1);
-
-            if (line) {
-                this.handleResponse(line);
-            }
-            newlineIndex = this.buffer.indexOf('\n');
-        }
-    }
-
-    handleResponse(line) {
-        let response;
-        try {
-            response = this.deserialize(line);
-        } catch (error) {
-            console.error('Respuesta invalida del servidor:', error.message);
-            return;
-        }
-
-        const requestId = response.requestId;
-        const pending = this.pending.get(requestId);
-        if (!pending) {
-            return;
-        }
-
-        this.pending.delete(requestId);
+        const response = await this.readResponseLine();
         if (response.status === 'ok') {
-            pending.resolve(response.data ?? response.response);
-            return;
+            return response.data ?? response.response;
         }
-        pending.reject(new Error(response.msg || 'Error RPC'));
+        throw new Error(response.msg || 'Error RPC');
     }
 
     handleClose() {
         this.connected = false;
         this.connecting = null;
         this.socket = null;
-        this.buffer = '';
-        this.rejectAllPending(new Error('Conexion cerrada por el servidor'));
         console.log('Desconectado del dispatcher');
     }
 
@@ -151,14 +107,61 @@ class ClientConnector {
         if (!this.connected) {
             return;
         }
-        this.rejectAllPending(new Error('Error de socket: ' + error.message));
+        console.error('Error de socket:', error.message);
     }
 
-    rejectAllPending(error) {
-        for (const [, pending] of this.pending) {
-            pending.reject(error);
-        }
-        this.pending.clear();
+    readResponseLine() {
+        return new Promise((resolve, reject) => {
+            if (!this.socket) {
+                reject(new Error('ClientConnector no conectado.'));
+                return;
+            }
+
+            let buffer = '';
+
+            const cleanup = () => {
+                this.socket.removeListener('data', onData);
+                this.socket.removeListener('error', onError);
+                this.socket.removeListener('close', onClose);
+            };
+
+            const onError = (error) => {
+                cleanup();
+                reject(new Error('Error de socket: ' + error.message));
+            };
+
+            const onClose = () => {
+                cleanup();
+                reject(new Error('Conexion cerrada por el servidor'));
+            };
+
+            const onData = (chunk) => {
+                buffer += chunk;
+                const newlineIndex = buffer.indexOf('\n');
+                if (newlineIndex === -1) {
+                    return;
+                }
+
+                cleanup();
+                const line = buffer.slice(0, newlineIndex).trim();
+                if (!line) {
+                    reject(new Error('Respuesta vacia del servidor'));
+                    return;
+                }
+
+                try {
+                    resolve(this.deserialize(line));
+                } catch (error) {
+                    reject(new Error('Respuesta invalida del servidor: ' + error.message));
+                }
+            };
+
+            this.socket.on('data', onData);
+
+            this.socket.once('error', onError);
+
+            this.socket.once('close', onClose);
+        });
     }
 }
 

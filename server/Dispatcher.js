@@ -31,9 +31,9 @@ class Dispatcher {
     handleConnection(socket) {
         const clientId = `${socket.remoteAddress}:${socket.remotePort}`;
         console.log(`Cliente conectado: ${clientId}`);
-        socket.setEncoding('utf8');
 
         let buffer = '';
+
         socket.on('data', (chunk) => {
             buffer += chunk;
             let newlineIndex = buffer.indexOf('\n');
@@ -59,17 +59,15 @@ class Dispatcher {
     }
 
     async handleRpc(socket, messageJson) {
-        let requestId = null;
         try {
             const payload = this.deserialize(messageJson);
-            requestId = payload.requestId ?? null;
-            console.log(`Ejecutando: ${payload.method} con parametros: ${payload.params[0]} y ${payload.params[1]}\n`);
+            console.log(`Ejecutando: ${payload.class}.${payload.method}(${(payload.params || []).join(', ')})`);
 
             const result = await this.executeMethod(payload);
-            this.sendResponse(socket, { requestId, status: 'ok', response: result });
+            this.sendResponse(socket, { status: 'ok', response: result });
         } catch (error) {
             console.error("Error:", error.message);
-            this.sendResponse(socket, { requestId, status: 'error', msg: error.message });
+            this.sendResponse(socket, { status: 'error', msg: error.message });
         }
     }
 
@@ -96,5 +94,4 @@ class Dispatcher {
     }
 }
 
-const port = Number.parseInt(process.env.PORT || '8080', 10);
-new Dispatcher(port);
+new Dispatcher(8080);
